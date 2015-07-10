@@ -1,7 +1,15 @@
+## -- READ ME --##
+## This script creates the Affiliate version of the Marketing Optimization Dashboard
+## 1 a) Sources: csv file from Warren about expected revenue
+## 1 b) File with affiliate data to date that Sean automaticaly upload to PBWork
+## 1 c) List of affiliate with tagging from Matt
+
 ##LIBRARIES
 library(dplyr)
 library(lubridate)
 
+## -- 1) Load data from files
+## a) Load the data from Warren files about exp revenue
 ## Expected revenue data without breackdown incentive vs. nonincentive
 ExpRev <- read.csv("1year_expected_revenue.csv", stringsAsFactors = FALSE)
 ExpRev_clean <- mutate(ExpRev, min_score = as.numeric(substr(credit_band, 2,4)), 
@@ -17,7 +25,7 @@ ExpRev2_clean[5,5] <- 499
 
 
 
-## Load the affiliate data -- https://creditsesame-affiliates.pbworks.com/w/browse/#view=ViewFolderNewGui&param=2015-06
+## b) Load the affiliate data -- https://creditsesame-affiliates.pbworks.com/w/browse/#view=ViewFolderNewGui&param=2015-06
 # ---- Loading end of June and beginning July (week starting 29th to 6th)
 affiliate_raw1 <- read.csv("150630 - affiliate2.06302015.csv", stringsAsFactors = FALSE)
 affiliate_raw1 <- select(affiliate_raw1, c(2, 4, 5, 8, 12, 15, 20))
@@ -36,17 +44,15 @@ affiliate <- rbind(affiliate_raw1, affiliate_raw2)
 ## Set score to 0 when it is NA
 affiliate$Avg.CreditScore[is.na(affiliate$Avg.CreditScore)] <- 0
 
-## ---- 2) Add the type acquisition (incent nonincent), importance, Partner.Name_clean
+## c) Add the type acquisition (incent nonincent), importance, Partner.Name_clean
 ## List the list of affiliate -- from Matt with classification incentive vs. non incentive
 listAffliliates_pruned <- read.csv("listAffiliates_pruned.csv", stringsAsFactors = FALSE)[1:4]
 
 affiliate_list <- inner_join(affiliate, listAffliliates_pruned, by = "Partner.Name")
 
 
-
-
-## =============================================
-## map the ExpRev to the corresponding users via the score
+## ==================
+## --- 2) map the ExpRev to the corresponding users via the score
 affiliate_Score <- bind_cols(affiliate_list, data.frame(ExpRev = rep(0, nrow(affiliate_list))), 
                              data.frame(ExpRev2 = rep(0, nrow(affiliate_list))))
 ## Avg.CreditScore (6)
@@ -123,8 +129,8 @@ ftable(table(affiliate_Score$Partner.Name, affiliate_Score$ExpRev))
 ## END TEST
 
 
-#### CANNOT MAKE THIS WORK TO DISTRIBUTE THE COST ACROSS ###########
-
+## ==================
+## 3) Associate the cost of different types of campaigns
 ## Before 6/12/15 incent and nonincent = $7
 ## After incent = 2 and nonincent = $8
 affiliate_Score3 <- cbind(affiliate_Score2, Cost = rep(0, nrow(affiliate_Score2)))
@@ -154,6 +160,8 @@ nrow(affiliate_Score3_1_b4) + nrow(affiliate_Score3_1_now_n) + nrow(affiliate_Sc
 affiliateScore4 <- bind_rows(affiliate_Score3_1_b4, affiliate_Score3_1_now_i, affiliate_Score3_1_now_n, affiliate_Score3_0, affiliate_Score3_00)
 
 
+## ==================
+## 4) Final wrangling getting all the data together
 ## ---------------------All affiliates
 ## ALL By Parnter.Name Total Clicks = sum(Click), sum(Cost)
 aFinal_all <- summarise(group_by(affiliateScore4, Partner.Name_clean, IncentType), "Total Clicks" = sum(Click, na.rm = TRUE), "Total Cost" = sum(Cost, na.rm = TRUE))
@@ -184,7 +192,9 @@ zFinal <- aFinal_final_all[,c(1,2,3,4,13,5,14,6,15,16,7,18,19,8,17,9,10,11,12)]
 
 View(arrange(as.data.frame(filter(zFinal, IncentType %in% c("incent", "nonincent"))), IncentType, desc(`Number Registered`)))
 
-## --------------------------------------
+
+## ==================
+## 5) Doing the output by subID
 ## --------------------- by subID
 ## Details by SubID for evoleads, maxb and namoffers
 aFinal_subID <- filter(affiliateScore4, Partner.Name_clean %in% c("evoleads", "maxb", "namoffers"))

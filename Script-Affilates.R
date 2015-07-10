@@ -7,6 +7,7 @@
 ##LIBRARIES
 library(dplyr)
 library(lubridate)
+library(data.table)
 
 ## -- 1) Load data from files
 ## a) Load the data from Warren files about exp revenue
@@ -26,21 +27,23 @@ ExpRev2_clean[5,5] <- 499
 
 
 ## b) Load the affiliate data -- https://creditsesame-affiliates.pbworks.com/w/browse/#view=ViewFolderNewGui&param=2015-06
-# ---- Loading end of June and beginning July (week starting 29th to 6th)
-affiliate_raw1 <- read.csv("150630 - affiliate2.06302015.csv", stringsAsFactors = FALSE)
-affiliate_raw1 <- select(affiliate_raw1, c(2, 4, 5, 8, 12, 15, 20))
-affiliate_raw1 <- transform(affiliate_raw1, Date = mdy_hms(Date))
-affiliate_raw1 <- filter(affiliate_raw1, Date > mdy_hms("06/28/15 23:59:59 UTC"))  #Select the last two days of June
-affiliate_raw2 <- read.csv("150706 - affiliate2.07062015.csv", stringsAsFactors = FALSE)
-affiliate_raw2 <- select(affiliate_raw2, c(2, 4, 5, 8, 12, 15, 20))
-affiliate_raw2 <- transform(affiliate_raw2, Date = mdy_hms(Date))
-affiliate <- rbind(affiliate_raw1, affiliate_raw2)
-# ----
-# affiliate_raw <- read.csv("affiliate2.06302015.csv", stringsAsFactors = FALSE)
+## Can ether load full week with two month across i]
+## Or full month to date ii]
+# ---- i] Loading end of June and beginning July (week starting 29th to 6th)
+#affiliate_raw1 <- read.csv("150630 - affiliate2.06302015.csv", stringsAsFactors = FALSE)
+#affiliate_raw1 <- select(affiliate_raw1, c(2, 4, 5, 8, 12, 15, 20))
+#affiliate_raw1 <- transform(affiliate_raw1, Date = mdy_hms(Date))
+#affiliate_raw1 <- filter(affiliate_raw1, Date > mdy_hms("06/28/15 23:59:59 UTC"))  #Select the last two days of June
+#affiliate_raw2 <- read.csv("150706 - affiliate2.07062015.csv", stringsAsFactors = FALSE)
+#affiliate_raw2 <- select(affiliate_raw2, c(2, 4, 5, 8, 12, 15, 20))
+#affiliate_raw2 <- transform(affiliate_raw2, Date = mdy_hms(Date))
+#affiliate <- rbind(affiliate_raw1, affiliate_raw2)
+# ---- ii] Loading month to date
+affiliate_raw <- read.csv("150710 - affiliate2.07092015.csv", stringsAsFactors = FALSE)
 #select only "Date", "Partner.Name", "Partner.SubID", "Click", "General.Sale..credit.report", "Avg.CreditScoreCustomer.ID"
-# affiliate <- select(affiliate_raw, c(2, 4, 5, 8, 12, 15, 20))
+affiliate <- select(affiliate_raw, c(2, 4, 5, 8, 12, 15, 20))
 ## Transform date field in date time datatype
-# affiliateScore2 <- transform(affiliateScore2, Date = mdy_hms(Date))
+affiliate <- transform(affiliate, Date = mdy_hms(Date))
 ## Set score to 0 when it is NA
 affiliate$Avg.CreditScore[is.na(affiliate$Avg.CreditScore)] <- 0
 
@@ -48,6 +51,11 @@ affiliate$Avg.CreditScore[is.na(affiliate$Avg.CreditScore)] <- 0
 ## List the list of affiliate -- from Matt with classification incentive vs. non incentive
 listAffliliates_pruned <- read.csv("listAffiliates_pruned.csv", stringsAsFactors = FALSE)[1:4]
 
+## Test to see if there are new affilaite that haven't been classified in Matt's list
+affiliate_list_test <- full_join(unique(select(affiliate, Partner.Name)), listAffliliates_pruned, by = "Partner.Name")
+View(affiliate_list_test$Partner.Name[is.na(affiliate_list_test$Partner.Name_clean)])
+
+#Join the affiliate data with the list of affiliate from Matt
 affiliate_list <- inner_join(affiliate, listAffliliates_pruned, by = "Partner.Name")
 
 
@@ -70,6 +78,8 @@ affiliate_Score_2i <- filter(affiliate_Score, Avg.CreditScore >= 675 & Avg.Credi
 affiliate_Score_2n <- filter(affiliate_Score, Avg.CreditScore >= 675 & Avg.CreditScore <=749 & IncentType %in% "nonincent")
 affiliate_Score_1i <- filter(affiliate_Score, Avg.CreditScore >= 750 & Avg.CreditScore <=850 & IncentType %in% "incent")
 affiliate_Score_1n <- filter(affiliate_Score, Avg.CreditScore >= 750 & Avg.CreditScore <=850 & IncentType %in% "nonincent")
+#affiliate_Score_0i <- filter(affiliate_Score, Avg.CreditScore <100 & IncentType %in% "incent")
+#affiliate_Score_0n <- filter(affiliate_Score, Avg.CreditScore <100 & IncentType %in% "nonincent")
 affiliate_Score_0 <- filter(affiliate_Score, Avg.CreditScore <100 | !(IncentType %in% c("incent", "nonincent")))
 
 affiliate_Score_1i$ExpRev <- ExpRev_clean$expected_revenue[1]
@@ -100,6 +110,7 @@ affiliate_Score_5n$ExpRev2 <- ExpRev2_clean$nonincent[5]
 affiliate_Score2 <- bind_rows(affiliate_Score_1i, affiliate_Score_2i, affiliate_Score_3i, affiliate_Score_4i, affiliate_Score_5i,
                              affiliate_Score_1n, affiliate_Score_2n, affiliate_Score_3n, affiliate_Score_4n, affiliate_Score_5n,
                              affiliate_Score_0)
+rm(list = ls(pattern ="affiliate_Score_[0-9]*")) #Clean the temporary datasets created above
 
 ##--- TEST
 table(affiliate_list$IncentType) # cnt breakdown of incent type
@@ -120,12 +131,17 @@ table(affiliate_Score2$ExpRev2, affiliate_Score$IncentType)
 #}
 
 ## TEST -----------
-length(affiliate_Score[affiliate_Score[,6] >=100, 6]) ## test the value of the score
-length(affiliate_Score[affiliate_Score[,11] > 0, 11]) ## get the number of input where ExpRev has been changed (>0) -- Should match the number above
-table(affiliate_Score$ExpRev) ## First number should be for ExpRev 0
-length(affiliate_Score[affiliate_Score[,6] <100, 6]) ## Should match the number above in table with 0
+#names(affiliate_Score2)
+#[1] "Date"                         "Partner.Name"                 "Partner.SubID"               
+#[4] "Click"                        "General.Sale..credit.report." "Avg.CreditScore"             
+#[7] "Customer.ID"                  "Partner.Name_clean"           "IncentType"                  
+#[10] "Importance"                   "ExpRev"                       "ExpRev2"
+length(affiliate_Score2$Avg.CreditScore[affiliate_Score2$Avg.CreditScore >=100 & affiliate_Score2$IncentType %in% c("incent", "nonincent")])  ## number of rows that have score >= 100
+length(affiliate_Score2$ExpRev[affiliate_Score2$ExpRev > 0]) ## number of input where ExpRev has been changed (>0) -- Should match the number above
+table(affiliate_Score2$ExpRev) ## First number should be for ExpRev 0
+nrow(affiliate_Score2[affiliate_Score2$Avg.CreditScore <100 | !(affiliate_Score2$IncentType %in% c("incent", "nonincent")), 6]) ## Should match the number above in table with 0
 ## Get some stats about the output by partner
-ftable(table(affiliate_Score$Partner.Name, affiliate_Score$ExpRev))
+ftable(table(affiliate_Score2$Partner.Name, affiliate_Score$ExpRev))
 ## END TEST
 
 
@@ -135,7 +151,7 @@ ftable(table(affiliate_Score$Partner.Name, affiliate_Score$ExpRev))
 ## After incent = 2 and nonincent = $8
 affiliate_Score3 <- cbind(affiliate_Score2, Cost = rep(0, nrow(affiliate_Score2)))
 
-affiliate_Score3_0 <- filter(affiliate_Score3, General.Sale..credit.report. == 0 & IncentType %in% c("incent", "nonincent"))
+affiliate_Score3_0 <- filter(affiliate_Score3, (General.Sale..credit.report. == 0) & IncentType %in% c("incent", "nonincent"))
 affiliate_Score3_1_b4 <- filter(affiliate_Score3, General.Sale..credit.report. == 1 & Date <= mdy("06/11/2015")
                               & IncentType %in% c("incent", "nonincent"))
 affiliate_Score3_1_now_i <- filter(affiliate_Score3, General.Sale..credit.report. == 1 & Date > mdy("06/11/2015")
@@ -151,14 +167,13 @@ affiliate_Score3_0$Cost <- 0
 affiliate_Score3_00$Cost <- 0
 
 ## TEST
-table(affiliate_Score3_1_b4$Cost)[1] + table(affiliate_Score3_1_now_n$Cost) + table(affiliate_Score3_1_now_i$Cost) + table(affiliate_Score3_0$Cost)
 nrow(affiliate_Score2)
 nrow(affiliate_Score3)
 nrow(affiliate_Score3_1_b4) + nrow(affiliate_Score3_1_now_n) + nrow(affiliate_Score3_1_now_i) + nrow(affiliate_Score3_0) + nrow(affiliate_Score3_00)
 
 ## Bind the individual datasets including the one that does not contain incent and nonincent
 affiliateScore4 <- bind_rows(affiliate_Score3_1_b4, affiliate_Score3_1_now_i, affiliate_Score3_1_now_n, affiliate_Score3_0, affiliate_Score3_00)
-
+rm(list = ls(pattern ="affiliate_Score3_[0-9]*"))
 
 ## ==================
 ## 4) Final wrangling getting all the data together
@@ -169,8 +184,10 @@ aFinal_all <- summarise(group_by(affiliateScore4, Partner.Name_clean, IncentType
 aFinal_reg <- summarise(group_by(filter(affiliateScore4, General.Sale..credit.report. == 1), Partner.Name_clean, IncentType), 
                         "Number Registered" = n(), "Total ExpRev" = sum(ExpRev, na.rm = TRUE), "Total ExpRev2" = sum(ExpRev2, na.rm = TRUE))
 ## ONLY NO SCORE    Number_Incomplete_Registration = n()
-aFinal_nonReg <- summarise(group_by(filter(affiliateScore4, General.Sale..credit.report. == 0), Partner.Name_clean, IncentType), 
+aFinal_nonReg <- summarise(group_by(filter(affiliateScore4, General.Sale..credit.report. == 0 ), Partner.Name_clean, IncentType), 
                            "Number Incomplete Registration" = n())
+
+
 ## Stats about the score
 aFinal_reg_score <- summarise(group_by(filter(affiliateScore4, General.Sale..credit.report. == 1 & Avg.CreditScore >=100), Partner.Name_clean, IncentType),
                               "Min Score" = min(Avg.CreditScore), "Max Score" = max(Avg.CreditScore),	"Avg Score" = mean(Avg.CreditScore), "Median Score" = median(Avg.CreditScore))
@@ -194,10 +211,10 @@ View(arrange(as.data.frame(filter(zFinal, IncentType %in% c("incent", "nonincent
 
 
 ## ==================
-## 5) Doing the output by subID
+## 5) Doing the output by subID for maxbounty and nameoffers
 ## --------------------- by subID
 ## Details by SubID for evoleads, maxb and namoffers
-aFinal_subID <- filter(affiliateScore4, Partner.Name_clean %in% c("evoleads", "maxb", "namoffers"))
+aFinal_subID <- filter(affiliateScore4, Partner.Name_clean %in% c("maxb", "namoffers"))
 
 ##---table(filter(aFinal_subID, Partner.Name_clean == "evoleads")$Partner.SubID, filter(aFinal_subID, Partner.Name_clean == "evoleads")$Click)
 
@@ -224,18 +241,30 @@ aFinal_subID_all_reg_nonReg <- left_join(aFinal_subID_all_reg, aFinal_subID_nonR
 aFinal_subID_all_reg_nonReg$Partner.SubID <- ifelse((aFinal_subID_all_reg_nonReg$Total.Clicks < 3) & (aFinal_subID_all_reg_nonReg$Partner.Name_clean %in% "evoleads"), 
                                                     "subID.agg", aFinal_subID_all_reg_nonReg$Partner.SubID)
 
-## TEST ##
-nrow(filter(aFinal_subID_all_reg_nonReg, Partner.Name_clean %in% "evoleads" & Total.Clicks == 1))
-nrow(filter(aFinal_subID_all_reg_nonReg, Partner.SubID %in% "subID.agg" & Total.Clicks == 1)) ## same as  above
-nrow(filter(aFinal_subID_all_reg_nonReg, Partner.SubID %in% "subID.agg" & !(Partner.Name_clean %in% "evoleads")))  ##should return 0
-nrow(filter(aFinal_subID_all_reg_nonReg, Partner.SubID %in% "subID.agg" & Total.Clicks >3)) ## should be 0
+## ==================
+## ----6) Doing the output by subID for evoleads
+## Extract the data of evolead
+aFinal_evoleads <- filter(affiliateScore4, Partner.Name_clean %in% c("evoleads"))
+## Isolate the correct SubID in a new columns named SubIDs
+aFinal_evoleads <- transform(aFinal_evoleads, Partner.SubID = substr(aFinal_evoleads$Partner.SubID, regexpr("-", aFinal_evoleads$Partner.SubID)+1, nchar(aFinal_evoleads$Partner.SubID)))
+##
+aFinal_subID <- aFinal_evoleads
+## ALL By Parnter.Name SubID Total Clicks = sum(Click), sum(Cost)
+aFinal_subID_all <- summarise(group_by(aFinal_subID, Partner.Name_clean, Partner.SubID, IncentType), "Total.Clicks" = sum(Click, na.rm = TRUE), 
+                              "Total.Cost" = sum(Cost, na.rm = TRUE))
+## ONLY W/ SCORE    Number_Registered =  n(), sum(ExpRev)
+aFinal_subID_reg <- summarise(group_by(filter(aFinal_subID, General.Sale..credit.report. == 1), Partner.Name_clean, Partner.SubID, IncentType), 
+                              "Number.Registered" = n(), "Total.ExpRev" = sum(ExpRev, na.rm = TRUE))
+## ONLY NO SCORE    Number_Incomplete_Registration = n()
+aFinal_subID_nonReg <- summarise(group_by(filter(aFinal_subID, General.Sale..credit.report. == 0), Partner.Name_clean, Partner.SubID, IncentType), 
+                                 "Number.Incomplete.Registration" = n())
 
+## Putting it all together
+aFinal_subID_all_reg <- left_join(aFinal_subID_all, aFinal_subID_reg, by = c("Partner.Name_clean", "Partner.SubID", "IncentType"))
+aFinal_subID_all_reg_nonReg <- left_join(aFinal_subID_all_reg, aFinal_subID_nonReg, by = c("Partner.Name_clean", "Partner.SubID", "IncentType"))
 
-aFinal_subID_all_reg_nonReg <- summarise(group_by(aFinal_subID_all_reg_nonReg, Partner.Name_clean, Partner.SubID, IncentType), 
-                                    "Total Clicks" = sum(Total.Clicks, na.rm = TRUE), "Total Cost" = sum(Total.Cost, na.rm = TRUE), 
-                                    "Number Registered" = sum(Number.Registered, na.rm = TRUE), "Total ExpRev" = sum(Total.ExpRev, na.rm = TRUE),
-                                    "Number Incomplete Registration" = sum(Number.Incomplete.Registration, na.rm = TRUE))
-
+View(aFinal_subID_all_reg_nonReg)
+write.table(aFinal_subID_all_reg_nonReg, pipe("pbcopy"), , sep="\t", row.names=FALSE, col.names=TRUE)
 
 ## ===================== Study on #click
 aFinal_2 <- aFinal_all_reg_nonReg

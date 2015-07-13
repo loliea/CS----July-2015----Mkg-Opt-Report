@@ -35,16 +35,16 @@ MkgCost2 <- read.csv("150706 - All export - Keyword - ID - Cost - no filter.csv"
 ## Remove the total lines
 MkgCost_clean2 <- filter(MkgCost2, !(Keyword %in% " --"))
 ## Just keep these columns
-## "Keyword"     "Impressions" "Clicks"      "Cost"
+## "Keyword"     "Keyword.max.CPC"  "Impressions" "Clicks"      "Cost"
 ## 2 - 8 - 9 - 10 - 12
-MkgCost_clean2 <- select(MkgCost_clean2, c(Keyword, Match.type, Impressions, Clicks, Cost))
+MkgCost_clean2 <- select(MkgCost_clean2, c(Keyword, Match.type, Keyword.max.CPC, Impressions, Clicks, Cost))
 ## Clean the keyword column removing the [, ] and " (this is to match how the keyword is formatted in AProfile)
 MkgCost_clean2 <- cbind.data.frame(as.character(gsub('\\[|\\]|\\"', "", MkgCost_clean2$Keyword)),
-                                   select(MkgCost_clean2, c(Keyword, Match.type, Impressions, Clicks, Cost)), stringsAsFactors = FALSE)
+                                   select(MkgCost_clean2, c(Keyword, Match.type, Keyword.max.CPC, Impressions, Clicks, Cost)), stringsAsFactors = FALSE)
 # Rename the columns
-names(MkgCost_clean2) <- c("Keyword", "oKeyword", "Match.type", "Impressions", "Clicks", "Cost")
+names(MkgCost_clean2) <- c("Keyword", "oKeyword", "Match.type", "Max.CPC", "Impressions", "Clicks", "Cost")
 # Aggregate by Keyword and Match.type
-MkgCost_agg2 <- summarise(group_by(MkgCost_clean2, Keyword, Match.type), sum_Impressions = sum(Impressions), sum_Clicks = sum(Clicks), 
+MkgCost_agg2 <- summarise(group_by(MkgCost_clean2, Keyword, Match.type), Max_CPC = max(Max.CPC), sum_Impressions = sum(Impressions), sum_Clicks = sum(Clicks), 
                           sum_Cost = sum(as.numeric(sub(",","",Cost))))
 
 
@@ -78,11 +78,14 @@ for (i in 1:nrow(AdProfileMkgCost)) {
 ## Format the final output with summaries
 ## Note that the AdWords metrics (impression, clicks, cost) are not sumable because we are directly getting from Google the total impression, click and cost
 aFinal_agg <- full_join(
-  summarise(group_by(filter(aFinal, Score>=100), Keyword, Match.type), "Total Impressions" = max(sum_Impressions), "Total Clicks" = max(sum_Clicks), 
-            "Total Cost" = max(sum_Cost), CPC = max(sum_Cost)/max(sum_Clicks), "Number Registered" = n(), "Click to Registration Rate" = n()/max(sum_Clicks), 
-            "Total ExpRev" = sum(ExpRev), "Avg ExpRev" = mean(ExpRev), ROI = sum(ExpRev)/max(sum_Cost),
-            "Min Score" = min(Score), "Max Score" = max(Score), "Avg Score" = mean(Score),"Median Score" = median(as.numeric(Score))),
-  summarise(group_by(filter(aFinal, Score < 100), Keyword, Match.type), "Num Incomplete Registrations" = n()),
+  summarise(group_by(filter(aFinal, Score>=100), Keyword, Match.type), "Max.CPC" = max(Max_CPC), "Total.Impressions" = max(sum_Impressions), "Total.Clicks" = max(sum_Clicks), 
+            "Total.Cost" = max(sum_Cost), "Number.Registered" = n(), "Click.to.Registration Rate" = n()/max(sum_Clicks), 
+            "Total.ExpRev" = sum(ExpRev), "Avg.ExpRev" = mean(ExpRev), ROI = sum(ExpRev)/max(sum_Cost),
+            "Cost.per.Registered" = Total.Cost/Number.Registered, "ExpRev.per.Registered" = Total.ExpRev/Number.Registered,
+            "Difference.Cost.to.ExpRev" = ((Total.ExpRev - Total.Cost)/Total.Cost), "Suggested.Max.CPC" = Max.CPC*(1+Difference.Cost.to.ExpRev)
+            #            ,"Min Score" = min(Score), "Max Score" = max(Score), "Avg Score" = mean(Score),"Median Score" = median(as.numeric(Score))
+            ),
+  summarise(group_by(filter(aFinal, Score < 100), Keyword, Match.type), "Num.Incomplete.Registrations" = n()),
   by = c("Keyword", "Match.type")
 )
 

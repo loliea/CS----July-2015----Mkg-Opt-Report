@@ -2,9 +2,11 @@ library(dplyr)
 
 ## -----1) Profile data with AdWords
 ## 1.1) Download the Ad Profile data from Fran
-AdProfile <- read.csv("150706 - adwordsscoreusers.csv", header = TRUE, stringsAsFactors = FALSE,
+AdProfile <- read.csv("150714 - adwordsscoreusers.csv", header = TRUE, stringsAsFactors = FALSE,
                       col.names = c("userToken", NA, NA, "Match.type", "Keyword", NA, "Score", "SignDate"))[,c(1,4,5,7,8)]
-AdProfile_clean <- AdProfile
+AdProfile2 <- distinct(AdProfile)  ## Removes the duplicate rows
+AdProfile_clean <- summarise(group_by(AdProfile2, userToken, Match.type, Keyword, SignDate), Score = mean(Score)) ## avg the score of users that show twice
+
 ## ---- With older version of the file
 # AdProfile <- read.table("AdProfile.csv", sep ="|", skip=1, 
 #                        col.names = c("NA", "userToken", "NA", "NA", "NA", "oKeyword", "NA", "Score", "SignDate", "NA"), 
@@ -31,20 +33,22 @@ ExpRev_clean[1,4] <- 850
 
 ## -----3) Data coming from AdWords with cost of campaigns
 ## 3.1) Upload the dataset from AdWords (report named "All export - Keyword - ID - Cost") "150706 - All export - Keyword - ID - Cost.csv"
-MkgCost2 <- read.csv("150706 - All export - Keyword - ID - Cost - no filter.csv", skip=1, stringsAsFactors = FALSE)
+MkgCost2 <- read.csv("150714 - All export - Keyword - ID - Cost - No filter.csv", skip=1, stringsAsFactors = FALSE)
 ## Remove the total lines
-MkgCost_clean2 <- filter(MkgCost2, !(Keyword %in% " --"))
+MkgCost2.1 <- filter(MkgCost2, !(Keyword %in% " --"))
 ## Just keep these columns
-## "Keyword"     "Keyword.max.CPC"  "Impressions" "Clicks"      "Cost"
+## "Keyword"     "Keyword.max.CPC"  "Impressions" "Clicks"      "Cost"    "Avg.CPC"
 ## 2 - 8 - 9 - 10 - 12
-MkgCost_clean2 <- select(MkgCost_clean2, c(Keyword, Match.type, Keyword.max.CPC, Impressions, Clicks, Cost))
+MkgCost2.2 <- select(MkgCost2.1, c(Keyword, Match.type, Keyword.max.CPC, Avg..CPC, Impressions, Clicks, Cost))
 ## Clean the keyword column removing the [, ] and " (this is to match how the keyword is formatted in AProfile)
-MkgCost_clean2 <- cbind.data.frame(as.character(gsub('\\[|\\]|\\"', "", MkgCost_clean2$Keyword)),
-                                   select(MkgCost_clean2, c(Keyword, Match.type, Keyword.max.CPC, Impressions, Clicks, Cost)), stringsAsFactors = FALSE)
+MkgCost2.3 <- cbind.data.frame(as.character(gsub('\\[|\\]|\\"', "", MkgCost2.2$Keyword)),
+                                   select(MkgCost2.2, c(Keyword, Match.type, as.numeric(Keyword.max.CPC), Avg..CPC, Impressions, Clicks, Cost)), stringsAsFactors = FALSE)
+# If Keyword.max.CPC is missing then replace it with Avg CPC
+MkgCost2.3[MkgCost2.3$Keyword.max.CPC == "","Keyword.max.CPC"] <- MkgCost2.3[MkgCost2.3$Keyword.max.CPC == "","Avg..CPC"]
 # Rename the columns
-names(MkgCost_clean2) <- c("Keyword", "oKeyword", "Match.type", "Max.CPC", "Impressions", "Clicks", "Cost")
+names(MkgCost2.3) <- c("Keyword", "oKeyword", "Match.type", "Max.CPC", "Avg.CPC", "Impressions", "Clicks", "Cost")
 # Aggregate by Keyword and Match.type
-MkgCost_agg2 <- summarise(group_by(MkgCost_clean2, Keyword, Match.type), Max_CPC = max(Max.CPC), sum_Impressions = sum(Impressions), sum_Clicks = sum(Clicks), 
+MkgCost_agg2 <- summarise(group_by(MkgCost2.3, Keyword, Match.type), Max_CPC = as.numeric(max(Max.CPC, na.rm = TRUE)), sum_Impressions = sum(Impressions, na.rm = TRUE), sum_Clicks = sum(Clicks, na.rm = TRUE), 
                           sum_Cost = sum(as.numeric(sub(",","",Cost))))
 
 
@@ -55,9 +59,11 @@ MkgCost_agg2 <- summarise(group_by(MkgCost_clean2, Keyword, Match.type), Max_CPC
 ## END TEST
 
 # TEST to see if we keep all Keyword/Match.type combinations
-#test_profile <- unique(select(AdProfile_clean, Keyword, Match.type))
-#test_mkg <- unique(select(MkgCost_agg2, Keyword, Match.type))
-#test <- inner_join(x=test_profile, y=test_mkg, by = c("Keyword", "Match.type"))
+test_profile <- unique(select(AdProfile_clean, Keyword, Match.type))
+test_mkg <- unique(select(MkgCost_agg2, Keyword, Match.type))
+test <- inner_join(x=test_profile, y=test_mkg, by = c("Keyword", "Match.type"))
+nrow(test)
+nrow(test_profile) ## Should match the nrow above
 # End TEST
 
 ## Join the profile data and MkgCost data via the Keyword to map users to cost of campaigns
@@ -75,6 +81,8 @@ for (i in 1:nrow(AdProfileMkgCost)) {
   }
 }
 
+
+
 ## Format the final output with summaries
 ## Note that the AdWords metrics (impression, clicks, cost) are not sumable because we are directly getting from Google the total impression, click and cost
 aFinal_agg <- full_join(
@@ -89,4 +97,17 @@ aFinal_agg <- full_join(
   by = c("Keyword", "Match.type")
 )
 
+write.table(aFinal_agg, pipe("pbcopy"), , sep="\t", row.names=FALSE, col.names=TRUE)
+
 aFinal_final <- select(aFinal_agg,c(1,2,3,4,5,6,7,8,9,10,11,16,12,13,14,15))
+
+
+##
+View(summarise(group_by(aFinal, Keyword, Match.type), "Max.CPC" = max(Max_CPC), "Total.Impressions" = max(sum_Impressions), "Total.Clicks" = max(sum_Clicks), 
+          "Total.Cost" = max(sum_Cost), "Number.Registered" = n(), "Click.to.Registration Rate" = n()/max(sum_Clicks), 
+          "Total.ExpRev" = sum(ExpRev), "Avg.ExpRev" = mean(ExpRev), ROI = sum(ExpRev)/max(sum_Cost),
+          "Cost.per.Registered" = Total.Cost/Number.Registered, "ExpRev.per.Registered" = Total.ExpRev/Number.Registered,
+          "Difference.Cost.to.ExpRev" = ((Total.ExpRev - Total.Cost)/Total.Cost)
+          #, "Suggested.Max.CPC" = Max.CPC*(1+Difference.Cost.to.ExpRev)
+          #            ,"Min Score" = min(Score), "Max Score" = max(Score), "Avg Score" = mean(Score),"Median Score" = median(as.numeric(Score))
+))

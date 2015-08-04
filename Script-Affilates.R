@@ -39,7 +39,7 @@ ExpRev2_clean[5,5] <- 499
 #affiliate_raw2 <- transform(affiliate_raw2, Date = mdy_hms(Date))
 #affiliate <- rbind(affiliate_raw1, affiliate_raw2)
 # ---- ii] Loading month to date
-affiliate_raw <- read.csv("150710 - affiliate2.07092015.csv", stringsAsFactors = FALSE)
+affiliate_raw <- read.csv("150727 - affiliate2.07262015.csv", stringsAsFactors = FALSE)
 #select only "Date", "Partner.Name", "Partner.SubID", "Click", "General.Sale..credit.report", "Avg.CreditScoreCustomer.ID"
 affiliate <- select(affiliate_raw, c(2, 4, 5, 8, 12, 15, 20))
 ## Transform date field in date time datatype
@@ -51,9 +51,13 @@ affiliate$Avg.CreditScore[is.na(affiliate$Avg.CreditScore)] <- 0
 ## List the list of affiliate -- from Matt with classification incentive vs. non incentive
 listAffliliates_pruned <- read.csv("listAffiliates_pruned.csv", stringsAsFactors = FALSE)[1:4]
 
-## Test to see if there are new affilaite that haven't been classified in Matt's list
+## TEST to see if there are new affilaite that haven't been classified in Matt's list
 affiliate_list_test <- full_join(unique(select(affiliate, Partner.Name)), listAffliliates_pruned, by = "Partner.Name")
 View(affiliate_list_test$Partner.Name[is.na(affiliate_list_test$Partner.Name_clean)])
+nrow(filter(affiliate, Partner.Name == "brandglueAWfb1"))
+## END TEST
+
+
 
 #Join the affiliate data with the list of affiliate from Matt
 affiliate_list <- inner_join(affiliate, listAffliliates_pruned, by = "Partner.Name")
@@ -168,8 +172,8 @@ affiliate_Score3_00$Cost <- 0
 
 ## TEST
 nrow(affiliate_Score2)
-nrow(affiliate_Score3)
-nrow(affiliate_Score3_1_b4) + nrow(affiliate_Score3_1_now_n) + nrow(affiliate_Score3_1_now_i) + nrow(affiliate_Score3_0) + nrow(affiliate_Score3_00)
+nrow(affiliate_Score3) #should match above
+nrow(affiliate_Score3_1_b4) + nrow(affiliate_Score3_1_now_n) + nrow(affiliate_Score3_1_now_i) + nrow(affiliate_Score3_0) + nrow(affiliate_Score3_00)  #should match above
 
 ## Bind the individual datasets including the one that does not contain incent and nonincent
 affiliateScore4 <- bind_rows(affiliate_Score3_1_b4, affiliate_Score3_1_now_i, affiliate_Score3_1_now_n, affiliate_Score3_0, affiliate_Score3_00)
@@ -208,13 +212,20 @@ aFinal_final_all <- mutate(aFinal_final_all, "Avg CPA" = `Total Cost`/`Number Re
 zFinal <- aFinal_final_all[,c(1,2,3,4,13,5,14,6,15,16,7,18,19,8,17,9,10,11,12)]
 
 View(arrange(as.data.frame(filter(zFinal, IncentType %in% c("incent", "nonincent"))), IncentType, desc(`Number Registered`)))
+write.table(arrange(as.data.frame(filter(zFinal, IncentType %in% c("incent", "nonincent"))), IncentType, desc(`Number Registered`)),
+            pipe("pbcopy"), , sep="\t", row.names=FALSE, col.names=TRUE)
 
-
+##--- TOP 5 by registration:
+cactus
+evoleads
+flt
+W4
+a2ads
 ## ==================
 ## 5) Doing the output by subID for maxbounty and nameoffers
 ## --------------------- by subID
 ## Details by SubID for evoleads, maxb and namoffers
-aFinal_subID <- filter(affiliateScore4, Partner.Name_clean %in% c("maxb", "namoffers"))
+aFinal_subID <- filter(affiliateScore4, Partner.Name_clean %in% c("cactus", "flt", "W4", "a2ads"))
 
 ##---table(filter(aFinal_subID, Partner.Name_clean == "evoleads")$Partner.SubID, filter(aFinal_subID, Partner.Name_clean == "evoleads")$Click)
 
@@ -235,11 +246,19 @@ aFinal_subID_nonReg <- summarise(group_by(filter(aFinal_subID, General.Sale..cre
 aFinal_subID_all_reg <- inner_join(aFinal_subID_all, aFinal_subID_reg, by = c("Partner.Name_clean", "Partner.SubID", "IncentType"))
 aFinal_subID_all_reg <- left_join(aFinal_subID_all, aFinal_subID_reg, by = c("Partner.Name_clean", "Partner.SubID", "IncentType"))
 aFinal_subID_all_reg_nonReg <- left_join(aFinal_subID_all_reg, aFinal_subID_nonReg, by = c("Partner.Name_clean", "Partner.SubID", "IncentType"))
-##aFinal_subID_final_all <- left_join(aFinal_subID_all_reg_nonReg, aFinal_subID_reg_score, by = c("Partner.Name_clean", "Partner.SubID", "IncentType"))
+# Group the sub ID which have 1 click into a dummy group
+aFinal_subID_all_reg_nonReg[aFinal_subID_all_reg_nonReg$Total.Clicks == 1, "Partner.SubID"] <- "Dummy group"
+# Summarize all the subids
+aFinal_subID_Final <- summarise(group_by(aFinal_subID_all_reg_nonReg, Partner.Name_clean, Partner.SubID, IncentType),
+               Total.Clicks = sum(Total.Clicks, na.rm = TRUE),
+               Total.Cost = sum(Total.Cost, na.rm = TRUE),
+               Number.Registered = sum(Number.Registered, na.rm = TRUE),
+               Total.ExpRev = sum(Total.ExpRev, na.rm = TRUE),
+               Number.Incomplete.Registration = sum(Number.Incomplete.Registration, na.rm = TRUE)
+               )
 
-## Rename the SubID of evoleads that have just one click to subID.agg (that way they will be summarize into one subID later on) -- nrow(aFinal_subID_all_reg_nonReg)
-aFinal_subID_all_reg_nonReg$Partner.SubID <- ifelse((aFinal_subID_all_reg_nonReg$Total.Clicks < 3) & (aFinal_subID_all_reg_nonReg$Partner.Name_clean %in% "evoleads"), 
-                                                    "subID.agg", aFinal_subID_all_reg_nonReg$Partner.SubID)
+View(aFinal_subID_Final)
+write.table(aFinal_subID_Final, pipe("pbcopy"), , sep="\t", row.names=FALSE, col.names=TRUE)
 
 ## ==================
 ## ----6) Doing the output by subID for evoleads
